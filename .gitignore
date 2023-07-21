@@ -2,3 +2,4 @@
 
 .noenc*
 key.config
+__pycache__/*
