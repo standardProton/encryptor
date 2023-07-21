@@ -67,7 +67,7 @@ def Decryptor():
     for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
         if not (dir_path.__contains__(".git")):
             for file in file_names:
-                if not (file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == "key.config" 
+                if not (file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == "key.config" or file == ".gitignore"
                         or file.endswith(".pyc") or file.startswith(".noenc")):
                     try:
                         content = None
@@ -79,7 +79,7 @@ def Decryptor():
 
                         if (not isascii(decrypted_file)): raise Exception("Could not decrypt file name %s" % file) #wrong password
 
-                        os.rename(file, decrypted_file)
+                        os.rename(dir_path + "/" + file, dir_path + "/" + decrypted_file)
 
                         if len(content) > 0:
                             decrypted = decrypt_bytes(content, pwhash, config['iv'])

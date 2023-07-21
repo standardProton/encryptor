@@ -54,7 +54,7 @@ def Encryptor():
     for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
         if not (dir_path.__contains__(".git") or dir_path.__contains__("__pycache__")):
             for file in file_names:
-                if not (file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" 
+                if not (file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == ".gitignore"
                         or file.endswith(".pyc") or file.startswith(".noenc")):
                     if (not isascii(file)):
                         print("Error: File name must be ASCII-encoded before encryption (%s)" % file)
@@ -70,7 +70,7 @@ def Encryptor():
                                     with open(dir_path + "/" + file, mode='w') as openFile: 
                                         openFile.write(encrypted)
                             
-                            os.rename(file, encrypt(file, pwhash, config['iv']))
+                            os.rename(dir_path + "/" + file, dir_path + "/" + encrypt(file, pwhash, config['iv']))
                         else: raise("Could not read content of file.")
                     except Exception as ex:
                         print("Could not encrypt %s" % file)
