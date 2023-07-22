@@ -73,7 +73,7 @@ def Decryptor():
                         content = None
                         with open(dir_path + "/" + file) as openFile:
                             content = openFile.read()
-                        if content == None: raise("Could not read content of file.")
+                        if content == None: raise Exception("Could not read content of file.")
                         
                         decrypted_file = decrypt(file, pwhash, config['iv'])
 
@@ -105,6 +105,10 @@ def Decryptor():
 
                 
 if __name__ == "__main__":
-    Decryptor()
-
+    try:
+        Decryptor()
+    except Exception as ex:
+        print("An error occured:")
+        print(ex)
+        while True: pass
 

