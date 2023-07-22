@@ -1,4 +1,4 @@
-import os, hashlib, base64, cryptography
+import os, hashlib, base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from decrypt import *
 
@@ -34,15 +34,14 @@ def Encryptor():
                 pwhash = lines[0]
         with open(os.getcwd() + "/key.config", 'w') as keyfile:
             keyfile.write("0" * 10000) #overwrite the real key before deleting
-        os.remove("key.config")
+        os.remove(os.getcwd() + "/key.config")
     
     if pwhash == None:
         while True:
             pw = input("Enter your password: ").strip()
             if len(pw) > 0:
                 print("\n\n\nConfirm password: %s" % pw)
-                confirm = input("[Y/n]: ")
-                confirm = confirm.lower()
+                confirm = input("[Y/n]: ").lower()
                 if (confirm == "y" or confirm == "yes"): 
                     pwhash = hashlib.sha256(base64.b64encode((salt + pw).encode('utf-8'))).hexdigest()
                     break

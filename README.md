@@ -1,9 +1,9 @@
 
-This is a simple, secure, offline, and open-source way to cryptographically store and retrieve your important files. Use this software to securely store passwords, evidence, journalism, or other important documents. It is necessary to use software that is offline and open-source to prevent centralization of the master passwords and ensure your security. It is important that the master password is unique and never written anywhere else in plaintext on your devices. Remember, the most secure information is information that doesn't exist, so memorize your key and only write it on paper placed in a physical vault. 
+This is a simple, secure, offline, and open-source way to cryptographically store and retrieve your important files. Use this software to securely store passwords, 2FA backup codes, journalism, or other important documents. It is necessary to use software that is offline and open-source to prevent centralization of the master passwords and ensure your security. It is important that the master password is unique and never written anywhere else in plaintext on your devices. Remember, the most secure information is information that doesn't exist, so memorize your key and only write it on paper placed in a physical vault. 
 
-The system uses AES to symmetrically encrypt and decrypt the files that exist in the same directory as the .py files. Currently, the name and content of files are encrypted, but not the names of folders. If you don't want a file to be encrypted, its name needs to start with ".noenc". A hash of the password you type in is used as the encryption key. To get started, make sure you have the necessary python libraries by running:
+The system uses AES to symmetrically encrypt and decrypt the files that exist in the same directory as the .py files. Currently, the name and content of files get encrypted, but not the names of folders. If you don't want a file to be encrypted, its name needs to start with ".noenc". A hash of the password you type in is used as the encryption key. To get started, make sure you have the necessary python libraries by running:
 
-  pip install cryptography
+pip install cryptography
 
 Configuration value explanations:
 - 'encrypted': A boolean to quickly see if the files in the directory have already been encrypted.
