@@ -46,6 +46,10 @@ def Decryptor():
         print("Error: Files must first be encrypted.")
         while True: pass
 
+    if ('iv' not in config):
+        print("Error: Missing 'iv' value in config!")
+        while True: pass
+
     salt = config['salt'] if ('salt' in config) else ""
     if len(salt) < 16: print("Warning: Value for salt should be defined.")
 
@@ -93,7 +97,7 @@ def Decryptor():
 
     if save_key and ('save_key_file' in config and config['save_key_file'].lower() == 'true'):
         with open(os.getcwd() + "/key.config", 'w') as keyfile:
-            keyfile.write(pwhash)
+            keyfile.write(pwhash + "\n" + config['iv'] + "\n" + salt)
     
     if success:
         config['encrypted'] = 'false'

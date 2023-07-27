@@ -1,4 +1,4 @@
-import os, hashlib, base64
+import os, hashlib, base64, binascii
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from decrypt import *
 
@@ -22,6 +22,10 @@ def Encryptor():
     if (config['encrypted'].lower() != 'false'):
         print("Error: Files must first be decrypted.")
         while True: pass
+
+    if ('iv' not in config):
+        print("Error: Missing 'iv' value in config!")
+        while True: pass
     
     pwhash = None
     salt = config['salt'] if ('salt' in config) else ""
@@ -30,10 +34,12 @@ def Encryptor():
     if (os.path.exists("key.config")):
         with open(os.getcwd() + "/key.config") as keyfile:
             lines = keyfile.readlines()
-            if len(lines) > 0 and len(lines[0]) == 64:
-                pwhash = lines[0]
-        with open(os.getcwd() + "/key.config", 'w') as keyfile:
-            keyfile.write("0" * 10000) #overwrite the real key before deleting
+            if len(lines) > 2 and len(lines[0]) == 65:
+                if (lines[1].replace('\n', '') == config['iv'] and lines[2].replace('\n', '') == salt):
+                    pwhash = lines[0].replace('\n', '')
+        for i in range(0, 4):
+            with open(os.getcwd() + "/key.config", 'w') as keyfile:
+                keyfile.write(binascii.b2a_hex(os.urandom(2048)).decode("utf-8"))  #overwrite the real key before deleting
         os.remove(os.getcwd() + "/key.config")
     
     if pwhash == None:
