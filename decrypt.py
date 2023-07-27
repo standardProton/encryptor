@@ -69,7 +69,7 @@ def Decryptor():
     #cipher = Cipher(algorithms.AES(bytes.fromhex(pwhash)), mode=modes.CFB(bytes.fromhex(config['iv']))).decryptor()
 
     for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
-        if not (dir_path.__contains__(".git")):
+        if not (dir_path.__contains__(".git") or dir_path.__contains__("__pycache__") or dir_path.__contains__(".noenc")):
             for file in file_names:
                 if not (file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == "key.config" or file == ".gitignore"
                         or file.endswith(".pyc") or file.startswith(".noenc")):
