@@ -34,6 +34,51 @@ def isascii(s):
         return True
     except: return False
 
+def protected_directory(dir_path):
+    return dir_path.__contains__(".git") or dir_path.__contains__("__pycache__") or dir_path.__contains__(".noenc")
+
+def protected_file(file):
+    return file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == ".gitignore" \
+        or file.endswith(".pyc") or file.startswith(".noenc")
+
+class dirElement: #Folder names must be encrypted after files for os.walk to be continuous, so a tree is needed.
+    def __init__(self, dir_name, parent_dir):
+        self.dir_name = dir_name
+        self.parent_dir = parent_dir
+        self.items = []
+
+    def printAll(self):
+        for i in range(0, len(self.items)):
+            self.items[i].printAll()
+        print("<root>" if self.dir_name == None else (self.parent_dir + "/" + self.dir_name))
+
+    def getList(self, r=[]): #(parent_dir, dir_name)
+        for i in range(0, len(self.items)):
+            self.items[i].getList(r)
+        if (self.dir_name != None): r.append((self.parent_dir, self.dir_name))
+        return r
+    
+    def addElement(self, namesplit, recursive_parent=""): #Recursively add new element given format 'folder_a/folder_b/folder_c' -> ['folder_a', 'folder_b', 'folder_c']
+        if (len(namesplit[0]) == 0):
+            print("Error: First folder item is 0 in length")
+            return
+
+        if len(namesplit) == 1: #base case, assumed not duplicate
+            self.items.append(dirElement(namesplit[0], recursive_parent))
+        else:
+            new_parent = recursive_parent + "/" + namesplit[0]
+            for i in range(0, len(self.items)):
+                if (self.items[i].dir_name == namesplit[0]):
+                    namesplit.pop(0)
+                    self.items[i].addElement(namesplit, new_parent)
+                    return
+            
+            #if not found
+            newElement = dirElement(namesplit[0], recursive_parent)
+            self.items.append(newElement)
+            namesplit.pop(0)
+            newElement.addElement(namesplit, new_parent)
+
 
 def Decryptor():
 
@@ -66,13 +111,13 @@ def Decryptor():
     save_key = True
     success = False
 
-    #cipher = Cipher(algorithms.AES(bytes.fromhex(pwhash)), mode=modes.CFB(bytes.fromhex(config['iv']))).decryptor()
+    dirtree = dirElement(None, "")
 
+    print("Decrypting Files... (This may take a moment)")
     for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
-        if not (dir_path.__contains__(".git") or dir_path.__contains__("__pycache__") or dir_path.__contains__(".noenc")):
+        if not protected_directory(dir_path):
             for file in file_names:
-                if not (file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == "key.config" or file == ".gitignore"
-                        or file.endswith(".pyc") or file.startswith(".noenc")):
+                if not protected_file(file):
                     try:
                         content = None
                         with open(dir_path + "/" + file) as openFile:
@@ -94,6 +139,20 @@ def Decryptor():
                         save_key = False
                         print("Could not decrypt %s" % file)
                         print(ex)
+            dir_list = dir_path.replace(os.getcwd(), '', 1).replace('/', '\\').replace('\\\\', '\\').split("\\")
+            if len(dir_list) > 1:
+                dir_list.pop(0) #first item is empty str as long as relative_dir starts with /
+                dirtree.addElement(dir_list)
+    
+    print("Decrypting Folder Names...")
+    for parent_dir, dir_name in dirtree.getList():
+        try:
+            decrypted_filename = decrypt(dir_name, pwhash, config['iv'])
+            if (not isascii(decrypted_filename)): raise Exception("Could not decrypt a folder name")
+            os.rename("%s/%s/%s" % (os.getcwd(), parent_dir, dir_name), "%s/%s/%s" % (os.getcwd(), parent_dir, decrypted_filename))
+        except:
+            save_key = False
+            print("Error: Could not rename directory %s" % (os.getcwd() + "/" + parent_dir + "/" + dir_name))
 
     if save_key and ('save_key_file' in config and config['save_key_file'].lower() == 'true'):
         with open(os.getcwd() + "/key.config", 'w') as keyfile:
@@ -105,6 +164,8 @@ def Decryptor():
         saveConfig(config)
     else: 
         while True: pass
+    
+    print("Done!")
     
 
                 

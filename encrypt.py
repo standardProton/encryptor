@@ -56,11 +56,13 @@ def Encryptor():
     config['hashed_pw'] = hashlib.sha256(base64.b64encode((salt + pwhash).encode('utf-8'))).hexdigest()
     saveConfig(config)
 
+    dirtree = dirElement(None, "")
+
+    print("Encrypting Files... (This may take a moment)")
     for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
-        if not (dir_path.__contains__(".git") or dir_path.__contains__("__pycache__") or dir_path.__contains__(".noenc")):
+        if not protected_directory(dir_path):
             for file in file_names:
-                if not (file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == ".gitignore"
-                        or file.endswith(".pyc") or file.startswith(".noenc")):
+                if not protected_file(file):
                     if (not isascii(file)):
                         print("Error: File name must be ASCII-encoded before encryption (%s)" % file)
                         continue
@@ -80,6 +82,20 @@ def Encryptor():
                     except Exception as ex:
                         print("Could not encrypt %s" % file)
                         print(ex)
+            
+            dir_list = dir_path.replace(os.getcwd(), '', 1).replace('/', '\\').replace('\\\\', '\\').split("\\")
+            if len(dir_list) > 1:
+                dir_list.pop(0) #first item is empty str as long as relative_dir starts with /
+                dirtree.addElement(dir_list)
+
+    print("Encrypting Folder Names...")
+    for parent_dir, dir_name in dirtree.getList():
+        try:
+            os.rename("%s/%s/%s" % (os.getcwd(), parent_dir, dir_name), "%s/%s/%s" % (os.getcwd(), parent_dir, encrypt(dir_name, pwhash, config['iv'])))
+        except:
+            print("Error: Could not rename directory %s" % (os.getcwd() + "/" + parent_dir + "/" + dir_name))
+
+    print("Done!")
 
 if __name__ == "__main__":
     try:
