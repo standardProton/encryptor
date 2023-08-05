@@ -1,6 +1,7 @@
 
 import os, hashlib, base64, cryptography
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.fernet import Fernet
 
 def readConfig():
     config = {}
@@ -20,13 +21,9 @@ def saveConfig(config):
     with open(os.getcwd() + "/encryption.config", 'w') as f:
         f.write(cstr)
 
-def decrypt(text, key, iv):
-    cipher = Cipher(algorithms.AES(bytes.fromhex(key)), mode=modes.CFB(bytes.fromhex(iv))).decryptor()
+def decrypt(text, aes_cfb):
+    cipher = aes_cfb.decryptor()
     return cipher.update(bytes.fromhex(text)).decode('latin-1') + cipher.finalize().decode('latin-1')
-
-def decrypt_bytes(text, key, iv):
-    cipher = Cipher(algorithms.AES(bytes.fromhex(key)), mode=modes.CFB(bytes.fromhex(iv))).decryptor()
-    return cipher.update(bytes.fromhex(text)) + cipher.finalize()
 
 def isascii(s):
     try:
@@ -112,6 +109,8 @@ def Decryptor():
     success = False
 
     dirtree = dirElement(None, "")
+    fernet = Fernet(base64.urlsafe_b64encode(bytes.fromhex(pwhash)[0:32])) #truncate key
+    aes_cfb = Cipher(algorithms.AES(bytes.fromhex(pwhash)), mode=modes.CFB(bytes.fromhex(config['iv'])))
 
     print("Decrypting Files... (This may take a moment)")
     for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
@@ -124,14 +123,14 @@ def Decryptor():
                             content = openFile.read()
                         if content == None: raise Exception("Could not read content of file.")
                         
-                        decrypted_file = decrypt(file, pwhash, config['iv'])
+                        decrypted_file = decrypt(file, aes_cfb)
 
                         if (not isascii(decrypted_file)): raise Exception("Could not decrypt file name %s" % file) #wrong password
 
                         os.rename(dir_path + "/" + file, dir_path + "/" + decrypted_file)
 
                         if len(content) > 0:
-                            decrypted = decrypt_bytes(content, pwhash, config['iv'])
+                            decrypted = fernet.decrypt(content)
                             if (len(decrypted) > 0):
                                 with open(dir_path + "/" + decrypted_file, 'wb') as openFile: openFile.write(decrypted)
                         success = True
@@ -147,7 +146,7 @@ def Decryptor():
     print("Decrypting Folder Names...")
     for parent_dir, dir_name in dirtree.getList():
         try:
-            decrypted_filename = decrypt(dir_name, pwhash, config['iv'])
+            decrypted_filename = decrypt(dir_name, aes_cfb)
             if (not isascii(decrypted_filename)): raise Exception("Could not decrypt a folder name")
             os.rename("%s/%s/%s" % (os.getcwd(), parent_dir, dir_name), "%s/%s/%s" % (os.getcwd(), parent_dir, decrypted_filename))
         except:

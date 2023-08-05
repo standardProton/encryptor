@@ -1,13 +1,10 @@
 import os, hashlib, base64, binascii
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.fernet import Fernet
 from decrypt import *
 
-def encrypt_bytes(text, key, iv):
-    cipher = Cipher(algorithms.AES(bytes.fromhex(key)), mode=modes.CFB(bytes.fromhex(iv))).encryptor()
-    return bytes.hex(cipher.update(text) + cipher.finalize())
-
-def encrypt(text, key, iv):
-    cipher = Cipher(algorithms.AES(bytes.fromhex(key)), mode=modes.CFB(bytes.fromhex(iv))).encryptor()
+def encrypt(text, aes_cfb):
+    cipher = aes_cfb.encryptor()
     return bytes.hex(cipher.update(text.encode('utf-8')) + cipher.finalize())
 
 
@@ -49,14 +46,16 @@ def Encryptor():
                 print("\n\n\nConfirm password: %s" % pw)
                 confirm = input("[Y/n]: ").lower()
                 if (confirm == "y" or confirm == "yes"): 
-                    pwhash = hashlib.sha256(base64.b64encode((salt + pw).encode('utf-8'))).hexdigest()
+                    pwhash = hashlib.sha256(base64.b64encode((salt + pw).encode())).hexdigest()
                     break
 
     config['encrypted'] = 'true'
-    config['hashed_pw'] = hashlib.sha256(base64.b64encode((salt + pwhash).encode('utf-8'))).hexdigest()
+    config['hashed_pw'] = hashlib.sha256(base64.b64encode((salt + pwhash).encode())).hexdigest()
     saveConfig(config)
 
     dirtree = dirElement(None, "")
+    fernet = Fernet(base64.urlsafe_b64encode(bytes.fromhex(pwhash)[0:32])) #truncate key
+    aes_cfb = Cipher(algorithms.AES(bytes.fromhex(pwhash)), mode=modes.CFB(bytes.fromhex(config['iv'])))
 
     print("Encrypting Files... (This may take a moment)")
     for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
@@ -72,12 +71,12 @@ def Encryptor():
                             content = openFile.read()
                         if (content != None):
                             if (len(content) > 0):
-                                encrypted = encrypt_bytes(content, pwhash, config['iv'])
+                                encrypted = fernet.encrypt(content).decode()
                                 if len(encrypted) > 0: 
                                     with open(dir_path + "/" + file, mode='w') as openFile: 
                                         openFile.write(encrypted)
                             
-                            os.rename(dir_path + "/" + file, dir_path + "/" + encrypt(file, pwhash, config['iv']))
+                            os.rename(dir_path + "/" + file, dir_path + "/" + encrypt(file, aes_cfb))
                         else: raise Exception("Could not read content of file.")
                     except Exception as ex:
                         print("Could not encrypt %s" % file)
@@ -91,7 +90,7 @@ def Encryptor():
     print("Encrypting Folder Names...")
     for parent_dir, dir_name in dirtree.getList():
         try:
-            os.rename("%s/%s/%s" % (os.getcwd(), parent_dir, dir_name), "%s/%s/%s" % (os.getcwd(), parent_dir, encrypt(dir_name, pwhash, config['iv'])))
+            os.rename("%s/%s/%s" % (os.getcwd(), parent_dir, dir_name), "%s/%s/%s" % (os.getcwd(), parent_dir, encrypt(dir_name, aes_cfb)))
         except:
             print("Error: Could not rename directory %s" % (os.getcwd() + "/" + parent_dir + "/" + dir_name))
 
