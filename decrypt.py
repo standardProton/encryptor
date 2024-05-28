@@ -32,11 +32,10 @@ def isascii(s):
     except: return False
 
 def protected_directory(dir_path):
-    return dir_path.__contains__(".git") or dir_path.__contains__("__pycache__") or dir_path.__contains__(".noenc")
+    return dir_path.__contains__(".noenc")
 
 def protected_file(file):
-    return file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == ".gitignore" \
-        or file.endswith(".pyc") or file.startswith(".noenc")
+    return file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == ".gitignore" or file.startswith(".noenc")
 
 class dirElement: #Folder names must be encrypted after files for os.walk to be continuous, so a tree is needed.
     def __init__(self, dir_name, parent_dir):
