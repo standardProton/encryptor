@@ -105,7 +105,6 @@ def Decryptor():
             else: break
         else: break
 
-    save_key = True
     success = False
 
     dirtree = dirElement(None, "")
@@ -135,7 +134,6 @@ def Decryptor():
                                 with open(dir_path + "/" + decrypted_file, 'wb') as openFile: openFile.write(decrypted)
                         success = True
                     except Exception as ex:
-                        save_key = False
                         print("Could not decrypt %s" % file)
                         print(ex)
             dir_list = dir_path.replace(os.getcwd(), '', 1).replace('/', '\\').replace('\\\\', '\\').split("\\")
@@ -150,10 +148,9 @@ def Decryptor():
             if (not isascii(decrypted_filename)): raise Exception("Could not decrypt a folder name")
             os.rename("%s/%s/%s" % (os.getcwd(), parent_dir, dir_name), "%s/%s/%s" % (os.getcwd(), parent_dir, decrypted_filename))
         except:
-            save_key = False
             print("Error: Could not rename directory %s" % (os.getcwd() + "/" + parent_dir + "/" + dir_name))
 
-    if save_key and ('save_key_file' in config and config['save_key_file'].lower() == 'true'):
+    if success and ('save_key_file' in config and config['save_key_file'].lower() == 'true'):
         with open(os.getcwd() + "/key.config", 'w') as keyfile:
             keyfile.write(pwhash + "\n" + config['iv'] + "\n" + salt)
     
