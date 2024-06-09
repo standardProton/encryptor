@@ -2,6 +2,7 @@ import os, hashlib, base64, binascii
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.fernet import Fernet
 from decrypt import *
+from getpass import getpass
 
 def encrypt(text, aes_cfb):
     cipher = aes_cfb.encryptor()
@@ -41,7 +42,7 @@ def Encryptor():
     
     if pwhash == None:
         while True:
-            pw = input("Enter your password: ").strip()
+            pw = getpass("Enter your password: ").strip()
             if len(pw) > 0:
                 print("\n\n\nConfirm password: %s" % pw)
                 confirm = input("[Y/n]: ").lower()

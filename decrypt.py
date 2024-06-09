@@ -1,7 +1,8 @@
 
-import os, hashlib, base64, cryptography
+import os, hashlib, base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.fernet import Fernet
+from getpass import getpass
 
 def readConfig():
     config = {}
@@ -95,7 +96,7 @@ def Decryptor():
     if len(salt) < 16: print("Warning: Value for salt should be defined.")
 
     while True:
-        pw = salt + input("Enter your password: ")
+        pw = salt + getpass("Enter your password: ")
         pwhash = hashlib.sha256(base64.b64encode(pw.encode('utf-8'))).hexdigest()
 
         if ('hashed_pw' in config and len(config['hashed_pw']) == 64):
