@@ -3,6 +3,10 @@ import os, hashlib, base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.fernet import Fernet
 from getpass import getpass
+import threading
+import queue
+
+NUM_THREADS = 8
 
 def readConfig():
     config = {}
@@ -19,8 +23,7 @@ def readConfig():
 def saveConfig(config):
     cstr = ""
     for key, value in config.items(): cstr += key + "=" + value + "\n"
-    with open(os.getcwd() + "/encryption.config", 'w') as f:
-        f.write(cstr)
+    with open(os.getcwd() + "/encryption.config", 'w') as f: f.write(cstr)
 
 def decrypt(text, aes_cfb):
     cipher = aes_cfb.decryptor()
@@ -77,97 +80,112 @@ class dirElement: #Folder names must be encrypted after files for os.walk to be 
             newElement.addElement(namesplit, new_parent)
 
 
-def Decryptor():
-
-    config = readConfig()
-    if (config == None):
-        print("Error: Could not find config file.")
-        while True: pass
-
-    if (config['encrypted'].lower() != 'true'):
-        print("Error: Files must first be encrypted.")
-        while True: pass
-
-    if ('iv' not in config):
-        print("Error: Missing 'iv' value in config!")
-        while True: pass
-
-    salt = config['salt'] if ('salt' in config) else ""
-    if len(salt) < 16: print("Warning: Value for salt should be defined.")
+def decryptor_thread(q: queue.Queue, status): #mutable status
 
     while True:
-        pw = salt + getpass("Enter your password: ")
-        pwhash = hashlib.sha256(base64.b64encode(pw.encode('utf-8'))).hexdigest()
-
-        if ('hashed_pw' in config and len(config['hashed_pw']) == 64):
-            if hashlib.sha256(base64.b64encode((salt + pwhash).encode('utf-8'))).hexdigest() != config['hashed_pw']:
-                print("Incorrect password.")
-            else: break
-        else: break
-
-    success = False
-
-    dirtree = dirElement(None, "")
-    fernet = Fernet(base64.urlsafe_b64encode(bytes.fromhex(pwhash)[0:32])) #truncate key
-    aes_cfb = Cipher(algorithms.AES(bytes.fromhex(pwhash)), mode=modes.CFB(bytes.fromhex(config['iv'])))
-
-    print("Decrypting Files... (This may take a moment)")
-    for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
-        if not protected_directory(dir_path):
-            for file in file_names:
-                if not protected_file(file):
-                    try:
-                        content = None
-                        with open(dir_path + "/" + file) as openFile:
-                            content = openFile.read()
-                        if content == None: raise Exception("Could not read content of file.")
-                        
-                        decrypted_file = decrypt(file, aes_cfb)
-
-                        if (not isascii(decrypted_file)): raise Exception("Could not decrypt file name %s" % file) #wrong password
-
-                        os.rename(dir_path + "/" + file, dir_path + "/" + decrypted_file)
-
-                        if len(content) > 0:
-                            decrypted = fernet.decrypt(content)
-                            if (len(decrypted) > 0):
-                                with open(dir_path + "/" + decrypted_file, 'wb') as openFile: openFile.write(decrypted)
-                        success = True
-                    except Exception as ex:
-                        print("Could not decrypt %s" % file)
-                        print(ex)
-            dir_list = dir_path.replace(os.getcwd(), '', 1).replace('/', '\\').replace('\\\\', '\\').split("\\")
-            if len(dir_list) > 1:
-                dir_list.pop(0) #first item is empty str as long as relative_dir starts with /
-                dirtree.addElement(dir_list)
+        dir_path, file = q.get()
+        if (dir_path is None or file is None): break
     
-    print("Decrypting Folder Names...")
-    for parent_dir, dir_name in dirtree.getList():
         try:
-            decrypted_filename = decrypt(dir_name, aes_cfb)
-            if (not isascii(decrypted_filename)): raise Exception("Could not decrypt a folder name")
-            os.rename("%s/%s/%s" % (os.getcwd(), parent_dir, dir_name), "%s/%s/%s" % (os.getcwd(), parent_dir, decrypted_filename))
-        except:
-            print("Error: Could not rename directory %s" % (os.getcwd() + "/" + parent_dir + "/" + dir_name))
+            content = None
+            with open(dir_path + "/" + file) as openFile:
+                content = openFile.read()
+            if content == None: raise Exception("Could not read content of file.")
+            
+            decrypted_file = decrypt(file, aes_cfb)
 
-    if success and ('save_key_file' in config and config['save_key_file'].lower() == 'true'):
-        with open(os.getcwd() + "/key.config", 'w') as keyfile:
-            keyfile.write(pwhash + "\n" + config['iv'] + "\n" + salt)
-    
-    if success:
-        config['encrypted'] = 'false'
-        config['hashed_pw'] = ''
-        saveConfig(config)
-    else: 
-        while True: pass
-    
-    print("Done!")
-    
+            if (not isascii(decrypted_file)): raise Exception("Could not decrypt file name %s" % file) #wrong password
 
-                
+            os.rename(dir_path + "/" + file, dir_path + "/" + decrypted_file)
+
+            if len(content) > 0:
+                decrypted = fernet.decrypt(content)
+                if (len(decrypted) > 0):
+                    with open(dir_path + "/" + decrypted_file, 'wb') as openFile: openFile.write(decrypted)
+            status[0] = True
+        except Exception as ex:
+            print("Could not decrypt %s" % file)
+            print(ex)
+            continue
+    
 if __name__ == "__main__":
     try:
-        Decryptor()
+        config = readConfig()
+        if (config == None):
+            print("Error: Could not find config file.")
+            while True: pass
+
+        if (config['encrypted'].lower() != 'true'):
+            print("Error: Files must first be encrypted.")
+            while True: pass
+
+        if ('iv' not in config):
+            print("Error: Missing 'iv' value in config!")
+            while True: pass
+
+        salt = config['salt'] if ('salt' in config) else ""
+        if len(salt) < 16: print("Warning: Value for salt should be defined.")
+
+        while True:
+            pw = salt + getpass("Enter your password: ")
+            pwhash = hashlib.sha256(base64.b64encode(pw.encode('utf-8'))).hexdigest()
+
+            if ('hashed_pw' in config and len(config['hashed_pw']) == 64):
+                if hashlib.sha256(base64.b64encode((salt + pwhash).encode('utf-8'))).hexdigest() != config['hashed_pw']:
+                    print("Incorrect password.")
+                else: break
+            else: break
+
+        success = [False] #mutable obj
+        dirtree = dirElement(None, "")
+        fernet = Fernet(base64.urlsafe_b64encode(bytes.fromhex(pwhash)[0:32])) #truncate key
+        aes_cfb = Cipher(algorithms.AES(bytes.fromhex(pwhash)), mode=modes.CFB(bytes.fromhex(config['iv'])))
+
+        print("Decrypting Files...")
+        q = queue.Queue()
+        decryptor_threads = []
+        for i in range(NUM_THREADS):
+            thd = threading.Thread(target=decryptor_thread, args=[q, success])
+            thd.start()
+            decryptor_threads.append(thd)
+
+        for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
+            if not protected_directory(dir_path):
+                for file in file_names:
+                    if not protected_file(file):
+                        q.put((dir_path, file))
+                dir_list = dir_path.replace(os.getcwd(), '', 1).replace('/', '\\').replace('\\\\', '\\').split("\\") #formatting
+                if len(dir_list) > 1:
+                    dir_list.pop(0) #first item is empty str as long as relative_dir starts with /
+                    dirtree.addElement(dir_list)
+
+        for i in range(NUM_THREADS): q.put((None, None)) #poison pill
+        for thd in decryptor_threads: thd.join()
+        
+        if (success[0]):
+            print("Decrypting Folder Names...")
+            for parent_dir, dir_name in dirtree.getList():
+                try:
+                    decrypted_filename = decrypt(dir_name, aes_cfb)
+                    if (not isascii(decrypted_filename)): raise Exception("Could not decrypt a folder name")
+                    os.rename("%s/%s/%s" % (os.getcwd(), parent_dir, dir_name), "%s/%s/%s" % (os.getcwd(), parent_dir, decrypted_filename))
+                except:
+                    print("Error: Could not rename directory %s" % (os.getcwd() + "/" + parent_dir + "/" + dir_name))
+
+            if ('save_key_file' in config and config['save_key_file'].lower() == 'true'):
+                with open(os.getcwd() + "/key.config", 'w') as keyfile:
+                    keyfile.write(pwhash + "\n" + config['iv'] + "\n" + salt)
+        
+        if success[0]:
+            config['encrypted'] = 'false'
+            config['hashed_pw'] = ''
+            saveConfig(config)
+        else: 
+            print("Could not decrypt files")
+            while True: pass
+        
+        print("Done!")
+
     except Exception as ex:
         print("An error occured:")
         print(ex)
