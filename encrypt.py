@@ -44,29 +44,24 @@ if __name__ == "__main__":
     try:
         config = readConfig()
 
-        if (config == None):
-            print("Error: Could not find config file.")
-            while True: pass
-
-        if (config['encrypted'].lower() != 'false'):
-            print("Error: Files must first be decrypted.")
-            while True: pass
+        if (config == None): err("Error: Could not find config file.")
+        if (config['encrypted'].lower() != 'false'): err("Error: Files must first be decrypted.")
 
         key, salt = None, None
         if ('salt' in config and len(config['salt']) > 0): 
-            salt = base64.b64decode(config['salt'])
+            salt = bytes.fromhex(config['salt'].strip())
             if len(salt) < 16: print("Warning: Salt value should be at least 16 bytes long.")
         else: 
             salt = os.urandom(24)
-            config['salt'] = base64.b64encode(salt).decode()
+            config['salt'] = bytes.hex(salt)
             config['iv'] = bytes.hex(os.urandom(16))
 
         if (os.path.exists("key.config")):
-            with open(os.getcwd() + "/key.config") as keyfile:
-                keyraw = keyfile.read().strip()
-                key = bytes.fromhex(keyraw)
-            with open(os.getcwd() + "/key.config", 'w') as keyfile:
-                keyfile.write(bytes.hex(os.urandom(16384)))  #overwrite the real key before deleting
+            with open(os.getcwd() + "/key.config", 'rb') as keyfile:
+                key = keyfile.read()
+                if (len(key) != 32): err("Invalid key.config length")
+            with open(os.getcwd() + "/key.config", 'wb') as keyfile:
+                keyfile.write(os.urandom(16384))  #overwrite the real key before deleting
             os.remove(os.getcwd() + "/key.config")
         
         if key == None:
@@ -74,11 +69,10 @@ if __name__ == "__main__":
                 pw = getpass("Enter your password: ").strip()
                 if len(pw) > 0:
                     pw2 = getpass("Confirm password: ").strip()
-                    if not (pw == pw2):
-                        print("Passwords do not match")
-                        continue
-                    key = derivePassword(pw, salt)
-                    break
+                    if not (pw == pw2): print("Passwords do not match")
+                    else:
+                        key = derivePassword(pw, salt)
+                        break
 
         config['encrypted'] = 'true'
         config['hashed_pw'] = bytes.hex(derivePassword(base64.b64encode(key).decode(), salt))
@@ -120,6 +114,5 @@ if __name__ == "__main__":
         print("Done!")
 
     except Exception as ex:
-        print("An error occured:")
         print(ex)
-        while True: pass
+        err("An error occured!")

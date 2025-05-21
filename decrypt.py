@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 "Secure offline directory encryptor and decryptor"
 
-import os, hashlib, base64
+import os, hashlib, base64, sys
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from cryptography.fernet import Fernet
@@ -26,8 +26,9 @@ def readConfig():
     return config
 
 def derivePassword(pw, salt):
+    pw = pw.strip()
     kdf = Scrypt(salt=salt, length=32, n=2**20, r=8, p=1)
-    return kdf.derive(pw.strip().encode('utf-8'))
+    return kdf.derive(pw.encode('utf-8'))
 
 def saveConfig(config):
     cstr = ""
@@ -50,6 +51,10 @@ def protected_directory(dir_path):
 def protected_file(file):
     return file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" \
         or (DEBUG and file == ".gitignore") or file.startswith(NOENC_PREFIX)
+
+def err(s):
+    print(s)
+    while True: pass
 
 class dirElement: #Folder names must be encrypted after files for os.walk to be continuous, so a tree is needed.
     def __init__(self, dir_name, parent_dir):
@@ -125,26 +130,18 @@ def decryptor_thread(q: queue.Queue, status, fernet, aes_cfb): #mutable status
 if __name__ == "__main__":
     try:
         config = readConfig()
-        if (config == None):
-            print("Error: Could not find config file.")
-            while True: pass
+        if (config == None): err("Error: Could not find config file.")
+        if (config['encrypted'].lower() != 'true'): err("Error: Files must first be encrypted.")
+        if ('iv' not in config): err("Error: Missing 'iv' value in config!")
 
-        if (config['encrypted'].lower() != 'true'):
-            print("Error: Files must first be encrypted.")
-            while True: pass
-
-        if ('iv' not in config):
-            print("Error: Missing 'iv' value in config!")
-            while True: pass
-
-        salt = base64.b64decode(config['salt'])
+        salt = bytes.fromhex(config['salt'])
         if len(salt) < 16: print("Warning: Salt value should be at least 16 bytes long.")
 
         while True:
             key = derivePassword(getpass("Enter your password: "), salt)
 
             if ('hashed_pw' in config):
-                print("Checking key")
+                print("Checking password...")
                 if (config['hashed_pw'] == bytes.hex(derivePassword(base64.b64encode(key).decode(), salt))): break
                 else: print("Incorrect password")
             else: break
@@ -186,9 +183,8 @@ if __name__ == "__main__":
                 except:
                     print("Error: Could not rename directory %s" % (os.getcwd() + "/" + parent_dir + "/" + dir_name))
 
-            if ('save_key_file' in config and config['save_key_file'].lower() == 'true'):
-                with open(os.getcwd() + "/key.config", 'w') as keyfile:
-                    keyfile.write(bytes.hex(key))
+            if ('save_key_file' in config and config['save_key_file'].lower() == 'true' and not sys.argv.__contains__("--no-keyfile")):
+                with open(os.getcwd() + "/key.config", 'wb') as keyfile: keyfile.write(key)
             
             config['encrypted'] = 'false'
             config['hashed_pw'] = ''
@@ -199,7 +195,6 @@ if __name__ == "__main__":
         print("Done!")
 
     except Exception as ex:
-        print("An error occured:")
         print(ex)
-        while True: pass
+        err("An error occured!")
 
