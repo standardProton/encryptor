@@ -11,7 +11,7 @@ The system uses python Fernet to symmetrically encrypt and decrypt the files tha
 2. If your filesystem uses Copy-On-Write (such as BTRFS), you must disable this in the directory you intend to encrypt and decrypt files. Use `chattr +C /path/where/encryption/` BEFORE adding any files into the path if this applies to you. [More Info](https://wiki.archlinux.org/title/Btrfs)
 3. Optionally set `save_key_file` in config. If set to true, it saves an unencrypted key file so you don't need to re-type your password every time. This file is overwritten before deletion when you go to encrypt again.
 4. Recommended to delete the `.git` directory or just copy and paste the files you need so git doesn't accidentally track unencrypted files.
-5. Set permissions for the python files to read and execute only (Ex. `sudo chmod 555 encrypt.py decrypt.py`) and optionally set the config file to read/write only for your user.
+5. Set permissions for the python files to read and execute only (Ex. `chmod 500 encrypt.py decrypt.py`) and optionally set the config file to read/write only for your user. Also make the scripts immutable: `sudo +i encrypt.py decrypt.py`.
 
 ## Instructions to update
 
