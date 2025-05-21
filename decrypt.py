@@ -1,12 +1,17 @@
+#!/usr/bin/env python3
+"Secure offline directory encryptor and decryptor"
 
 import os, hashlib, base64
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from cryptography.fernet import Fernet
 from getpass import getpass
 import threading
 import queue
 
 NUM_THREADS = 8
+DEBUG = True #ignore .git
+NOENC_PREFIX = ".noenc"
 
 def readConfig():
     config = {}
@@ -19,6 +24,10 @@ def readConfig():
                     config[line_split[0].lower()] = "" if len(line_split) == 0 else line_split[1].lower().strip()
     else: return None
     return config
+
+def derivePassword(pw, salt):
+    kdf = Scrypt(salt=salt, length=32, n=2**20, r=8, p=1)
+    return kdf.derive(pw.strip().encode('utf-8'))
 
 def saveConfig(config):
     cstr = ""
@@ -36,10 +45,11 @@ def isascii(s):
     except: return False
 
 def protected_directory(dir_path):
-    return dir_path.__contains__(".noenc")
+    return dir_path.__contains__(NOENC_PREFIX) or (DEBUG and dir_path.__contains__(".git"))
 
 def protected_file(file):
-    return file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" or file == ".gitignore" or file.startswith(".noenc")
+    return file == "decrypt.py" or file == "encrypt.py" or file == "encryption.config" \
+        or (DEBUG and file == ".gitignore") or file.startswith(NOENC_PREFIX)
 
 class dirElement: #Folder names must be encrypted after files for os.walk to be continuous, so a tree is needed.
     def __init__(self, dir_name, parent_dir):
@@ -80,11 +90,11 @@ class dirElement: #Folder names must be encrypted after files for os.walk to be 
             newElement.addElement(namesplit, new_parent)
 
 
-def decryptor_thread(q: queue.Queue, status): #mutable status
+def decryptor_thread(q: queue.Queue, status, fernet, aes_cfb): #mutable status
 
     while True:
         dir_path, file = q.get()
-        if (dir_path is None or file is None): break
+        if (dir_path is None or file is None or status[0] == -1): break
     
         try:
             content = None
@@ -102,12 +112,16 @@ def decryptor_thread(q: queue.Queue, status): #mutable status
                 decrypted = fernet.decrypt(content)
                 if (len(decrypted) > 0):
                     with open(dir_path + "/" + decrypted_file, 'wb') as openFile: openFile.write(decrypted)
-            status[0] = True
+            status[0] = 1
         except Exception as ex:
+            if (type(ex) == UnicodeDecodeError): 
+                print("Incorrect password")
+                status[0] = -1
+                break
             print("Could not decrypt %s" % file)
             print(ex)
             continue
-    
+
 if __name__ == "__main__":
     try:
         config = readConfig()
@@ -123,36 +137,36 @@ if __name__ == "__main__":
             print("Error: Missing 'iv' value in config!")
             while True: pass
 
-        salt = config['salt'] if ('salt' in config) else ""
-        if len(salt) < 16: print("Warning: Value for salt should be defined.")
+        salt = base64.b64decode(config['salt'])
+        if len(salt) < 16: print("Warning: Salt value should be at least 16 bytes long.")
 
         while True:
-            pw = salt + getpass("Enter your password: ")
-            pwhash = hashlib.sha256(base64.b64encode(pw.encode('utf-8'))).hexdigest()
+            key = derivePassword(getpass("Enter your password: "), salt)
 
-            if ('hashed_pw' in config and len(config['hashed_pw']) == 64):
-                if hashlib.sha256(base64.b64encode((salt + pwhash).encode('utf-8'))).hexdigest() != config['hashed_pw']:
-                    print("Incorrect password.")
-                else: break
+            if ('hashed_pw' in config):
+                print("Checking key")
+                if (config['hashed_pw'] == bytes.hex(derivePassword(base64.b64encode(key).decode(), salt))): break
+                else: print("Incorrect password")
             else: break
 
-        success = [False] #mutable obj
+        status = [0] #mutable obj
         dirtree = dirElement(None, "")
-        fernet = Fernet(base64.urlsafe_b64encode(bytes.fromhex(pwhash)[0:32])) #truncate key
-        aes_cfb = Cipher(algorithms.AES(bytes.fromhex(pwhash)), mode=modes.CFB(bytes.fromhex(config['iv'])))
+        fernet = Fernet(base64.b64encode(key)) #truncate key
+        aes_cfb = Cipher(algorithms.AES(key), mode=modes.CFB(bytes.fromhex(config['iv'])))
 
         print("Decrypting Files...")
         q = queue.Queue()
         decryptor_threads = []
         for i in range(NUM_THREADS):
-            thd = threading.Thread(target=decryptor_thread, args=[q, success])
+            thd = threading.Thread(target=decryptor_thread, args=[q, status, fernet, aes_cfb])
             thd.start()
             decryptor_threads.append(thd)
 
         for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
+            if (status[0] == -1): break
             if not protected_directory(dir_path):
                 for file in file_names:
-                    if not protected_file(file):
+                    if not protected_file(file) and status[0] >= 0:
                         q.put((dir_path, file))
                 dir_list = dir_path.replace(os.getcwd(), '', 1).replace('/', '\\').replace('\\\\', '\\').split("\\") #formatting
                 if len(dir_list) > 1:
@@ -161,8 +175,8 @@ if __name__ == "__main__":
 
         for i in range(NUM_THREADS): q.put((None, None)) #poison pill
         for thd in decryptor_threads: thd.join()
-        
-        if (success[0]):
+
+        if (status[0] == 1):
             print("Decrypting Folder Names...")
             for parent_dir, dir_name in dirtree.getList():
                 try:
@@ -174,16 +188,14 @@ if __name__ == "__main__":
 
             if ('save_key_file' in config and config['save_key_file'].lower() == 'true'):
                 with open(os.getcwd() + "/key.config", 'w') as keyfile:
-                    keyfile.write(pwhash + "\n" + config['iv'] + "\n" + salt)
-        
-        if success[0]:
+                    keyfile.write(bytes.hex(key))
+            
             config['encrypted'] = 'false'
             config['hashed_pw'] = ''
             saveConfig(config)
         else: 
-            print("Could not decrypt files")
-            while True: pass
-        
+            print("Failed to decrypt files")
+
         print("Done!")
 
     except Exception as ex:

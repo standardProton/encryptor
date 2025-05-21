@@ -1,5 +1,9 @@
+#!/usr/bin/env python3
+"Secure offline directory encryptor and decryptor"
+
 import os, hashlib, base64, binascii
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from cryptography.fernet import Fernet
 from decrypt import *
 from getpass import getpass
@@ -9,7 +13,6 @@ import queue
 def encrypt(text, aes_cfb):
     cipher = aes_cfb.encryptor()
     return bytes.hex(cipher.update(text.encode('utf-8')) + cipher.finalize())
-
 
 def encryptor_thread(q: queue.Queue):
 
@@ -49,51 +52,50 @@ if __name__ == "__main__":
             print("Error: Files must first be decrypted.")
             while True: pass
 
-        if ('iv' not in config):
-            print("Error: Missing 'iv' value in config!")
-            while True: pass
-        
-        pwhash = None
-        salt = config['salt'] if ('salt' in config) else ""
-        if len(salt) < 16: print("Warning: Value for salt should be defined.")
+        key, salt = None, None
+        if ('salt' in config and len(config['salt']) > 0): 
+            salt = base64.b64decode(config['salt'])
+            if len(salt) < 16: print("Warning: Salt value should be at least 16 bytes long.")
+        else: 
+            salt = os.urandom(24)
+            config['salt'] = base64.b64encode(salt).decode()
+            config['iv'] = bytes.hex(os.urandom(16))
 
         if (os.path.exists("key.config")):
             with open(os.getcwd() + "/key.config") as keyfile:
-                lines = keyfile.readlines()
-                if len(lines) > 2 and len(lines[0]) == 65:
-                    if (lines[1].replace('\n', '') == config['iv'] and lines[2].replace('\n', '') == salt):
-                        pwhash = lines[0].replace('\n', '')
-            for i in range(0, 4):
-                with open(os.getcwd() + "/key.config", 'w') as keyfile:
-                    keyfile.write(binascii.b2a_hex(os.urandom(2048)).decode("utf-8"))  #overwrite the real key before deleting
+                keyraw = keyfile.read().strip()
+                key = bytes.fromhex(keyraw)
+            with open(os.getcwd() + "/key.config", 'w') as keyfile:
+                keyfile.write(bytes.hex(os.urandom(16384)))  #overwrite the real key before deleting
             os.remove(os.getcwd() + "/key.config")
         
-        if pwhash == None:
+        if key == None:
             while True:
                 pw = getpass("Enter your password: ").strip()
                 if len(pw) > 0:
-                    print("\n\n\nConfirm password: %s" % pw)
-                    confirm = input("[Y/n]: ").lower()
-                    if (confirm == "y" or confirm == "yes"): 
-                        pwhash = hashlib.sha256(base64.b64encode((salt + pw).encode())).hexdigest()
-                        break
+                    pw2 = getpass("Confirm password: ").strip()
+                    if not (pw == pw2):
+                        print("Passwords do not match")
+                        continue
+                    key = derivePassword(pw, salt)
+                    break
 
         config['encrypted'] = 'true'
-        config['hashed_pw'] = hashlib.sha256(base64.b64encode((salt + pwhash).encode())).hexdigest()
+        config['hashed_pw'] = bytes.hex(derivePassword(base64.b64encode(key).decode(), salt))
         saveConfig(config)
 
         dirtree = dirElement(None, "")
-        fernet = Fernet(base64.urlsafe_b64encode(bytes.fromhex(pwhash)[0:32])) #truncate key
-        aes_cfb = Cipher(algorithms.AES(bytes.fromhex(pwhash)), mode=modes.CFB(bytes.fromhex(config['iv'])))
+        fernet = Fernet(base64.b64encode(key))
+        aes_cfb = Cipher(algorithms.AES(key), mode=modes.CFB(bytes.fromhex(config['iv'])))
 
         print("Encrypting Files...")
 
         q = queue.Queue()
         encryptor_threads = []
         for i in range(NUM_THREADS): #start threads
-             thd = threading.Thread(target=encryptor_thread, args=[q])
-             thd.start()
-             encryptor_threads.append(thd)
+                thd = threading.Thread(target=encryptor_thread, args=[q])
+                thd.start()
+                encryptor_threads.append(thd)
 
         for (dir_path, dir_names, file_names) in os.walk(os.getcwd()):
             if not protected_directory(dir_path):
